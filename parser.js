@@ -1,25 +1,39 @@
-const { SyncWaterfallHook, HookMap } = require('tapable')
+const { AsyncSeriesWaterfallHook, HookMap } = require('tapable')
 const { Parser } = require('htmlparser2')
 
 module.exports = class HTMLParser {
   constructor(context) {
-    this.context = context
+    this.loaderContext = context
     this.hooks = {
-      traverse: new HookMap(() => new SyncWaterfallHook(['context', 'node'])),
-      traversed: new SyncWaterfallHook(['context', 'tree'])
+      traverse: new HookMap(() => new AsyncSeriesWaterfallHook(['node'])),
+      traversed: new AsyncSeriesWaterfallHook(['tree'])
     }
   }
 
-  traverse(tree) {
+  traverse(tree, callback) {
     if (!tree) {
       return
     }
-    for (let i = 0; i < tree.length; i++) {
-      const node = tree[i]
-      tree[i] = this.hooks.traverse.for(node.tag).call([this.context, node]);
-      this.traverse(node.children)
-    }
-    this.hooks.traversed.call([this.context, tree])
+    async(tree, (node) => {
+      if (typeof node === 'string') {
+        this.hooks.traverse.for('text').callAsync(node, (err, result) => {
+          tree[i] = result
+        });
+        continue
+      }
+      tree[i] = this.hooks.traverse.for(node.tag).callAsync(node, (err, result) => {
+        tree[i] = result
+      });
+      this.traverse(node.children, callback)
+    }, () => {
+      this.hooks.traversed.callAsync(tree, (err, result) => {
+        if (err) {
+          return callback(err)
+        }
+        return callback(null, result)
+      })
+    })
+    
   }
 
   parse(html) {
@@ -33,7 +47,7 @@ module.exports = class HTMLParser {
       }
       last.children ? last.children.push(buffer) : last.children = [buffer]
     }
-    parser = new Parser({
+    const parser = new Parser({
       onopentag: (tag, attrs) => {
         buffers.push({
           tag,
@@ -55,5 +69,18 @@ module.exports = class HTMLParser {
     parser.end()
 
     return tree
+  }
+}
+
+function async(deps, callback, done) {
+  let count = deps.length
+  const cb = () => {
+    count--
+    if (count === 0) {
+      done()
+    }
+  }
+  for (let i = 0; i < deps.length; i++) {
+    callback(deps[i], cb)
   }
 }

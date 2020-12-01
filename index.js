@@ -1,18 +1,25 @@
 const { getOptions } = require('loader-utils')
 const Parser = require('./parser')
 
-module.exports = (source) => {
+module.exports = function(source) {
   const options = getOptions(this);
   const { plugins } = options
   const parser = new Parser(this)
-  if (plugins && plugins.length > 0) {
+  if (Array.isArray(plugins)) {
     for (const plugin of plugins) {
-      plugin.apply(parser)
+      if (typeof plugin === 'function') {
+        plugin.call(parser, parser)
+      } else {
+        plugin.apply(parser)
+      }
     }
   }
   const tree = parser.parse(source)
-  parse.traverse(tree)
-
-  let callback = this.async()
-  callback(null, source)
+  parser.traverse(tree, (err, result) => {
+    let callback = this.async()
+    if (err) {
+      return callback(err)
+    }
+    return callback(null, source)
+  })
 }
