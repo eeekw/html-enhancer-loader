@@ -1,2 +1,1 @@
-// import html from './template.html'
-import('./async').then(async => async())
+import html from './template.html'
