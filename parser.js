@@ -12,19 +12,26 @@ module.exports = class HTMLParser {
 
   traverse(tree, callback) {
     if (!tree) {
+      callback(null, tree)
       return
     }
-    async(tree, (node) => {
-      if (typeof node === 'string') {
-        this.hooks.traverse.for('text').callAsync(node, (err, result) => {
-          tree[i] = result
-        });
-        continue
-      }
-      tree[i] = this.hooks.traverse.for(node.tag).callAsync(node, (err, result) => {
-        tree[i] = result
-      });
-      this.traverse(node.children, callback)
+    async(tree, (node, cb) => {
+      this.hooks.traverse.for(typeof node === 'string' ? 'text' : node.tag).callAsync(node, function (err, result) {
+        if (err) {
+          return cb(err)
+        }
+        if (!result.children) {
+          cb(null, result)
+          return
+        }
+        this.traverse(result.children, function (err, children) {
+          if (err) {
+            return cb(err)
+          }
+          result.children = children
+          return cb(null, result)
+        })
+      }.bind(this));
     }, () => {
       this.hooks.traversed.callAsync(tree, (err, result) => {
         if (err) {
@@ -33,7 +40,7 @@ module.exports = class HTMLParser {
         return callback(null, result)
       })
     })
-    
+
   }
 
   parse(html) {
@@ -74,13 +81,18 @@ module.exports = class HTMLParser {
 
 function async(deps, callback, done) {
   let count = deps.length
-  const cb = () => {
-    count--
-    if (count === 0) {
-      done()
-    }
-  }
+  let values = []
+
   for (let i = 0; i < deps.length; i++) {
-    callback(deps[i], cb)
+    callback(deps[i], (err, result) => {
+      if (err) {
+        return done(err)
+      }
+      values[i] = result
+      count--
+      if (count === 0) {
+        return done(null, values)
+      }
+    })
   }
 }
