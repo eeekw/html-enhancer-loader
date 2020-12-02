@@ -4,20 +4,31 @@ const fs = require('fs')
 module.exports = class ResponsiveImage {
   apply(parser) {
     const { loaderContext } = parser
+    // parser.hooks.traverse.for('img').tapPromise('ResponsiveImage', (node) => {
+    //   return new Promise((resolve, reject) => {
+    //     const { attrs } = node
+    //     if (!/^\./.test(attrs.src)) {
+    //       return resolve(node)
+    //     }
+    //     loaderContext.resolve(loaderContext.context, attrs.src, () => {
+
+    //     })
+    //   })
+    // })
     parser.hooks.traverse.for('img').tap('ResponsiveImage', (node) => {
       const { attrs } = node
       if (/^\./.test(attrs.src)) {
-        const src = path.resolve(loaderContext.context, attrs.src)
-        const name = path.parse(src).name
+        const source = path.resolve(loaderContext.context, attrs.src)
+        const name = path.parse(source).name
         let dir
         let srcset = [[], []]
         let sizes = []
         try {
-          const data = fs.statSync(src)
+          const data = fs.statSync(source)
           if (data.isDirectory()) {
-            dir = src
+            dir = source
           } else {
-            dir = path.dirname(src)
+            dir = path.dirname(source)
           }
           const files = fs.readdirSync(dir)
           for (const file of files) {
@@ -26,13 +37,13 @@ module.exports = class ResponsiveImage {
             if (!match) {
               continue
             }
+            let src = [path.relative(loaderContext.context, path.resolve(dir, file))]
             if (!match[1]) {
-              const src = path.resolve(dir, file)
-              loaderContext.resolve(dir, src, (err, result) => {
-                console.log(err, result)
-              })
-              srcset[0].push(src)
-              srcset[1].push(src)
+              // loaderContext.resolve(dir, src, (err, result) => {
+              //   console.log(err, result)
+              // })
+              srcset[0].push(src.join(' '))
+              srcset[1].push(src.join(' '))
               continue
             }
             if (match[1].charAt(0) !== '@') {
@@ -40,7 +51,6 @@ module.exports = class ResponsiveImage {
             }
             let unparse = match[1].slice(1)
             const marks = parseMark(unparse)
-            const src = [path.resolve(dir, file)]
             if (!marks[1]) {
               if (marks[0]) {
                 src.push(marks[0])
@@ -61,11 +71,9 @@ module.exports = class ResponsiveImage {
       return node
     })
   }
-
-  resolve(context, path, callback) {
-    
-  }
 }
+
+
 
 function parseMark(mark) {
   const match = (/^(\d+?x)|(\d+?px)(\d+?(px|em|vw))(min|max)$/.exec(mark) || []).slice()
