@@ -1,5 +1,6 @@
 const { getOptions } = require('loader-utils')
 const Parser = require('./parser')
+const Render = require('./render')
 
 module.exports = function(source) {
   const options = getOptions(this);
@@ -20,6 +21,7 @@ module.exports = function(source) {
     if (err) {
       return callback(err)
     }
-    return callback(null, source)
+    const html = new Render().render(result)
+    return callback(null, html) 
   })
 }
