@@ -15,9 +15,9 @@ module.exports = function(source) {
       }
     }
   }
+  let callback = this.async()
   const tree = parser.parse(source)
   parser.traverse(tree, (err, result) => {
-    let callback = this.async()
     if (err) {
       return callback(err)
     }

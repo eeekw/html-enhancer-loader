@@ -16,7 +16,7 @@ module.exports = class HTMLParser {
       return
     }
     async(tree, (node, cb) => {
-      this.hooks.traverse.for(typeof node === 'string' ? 'text' : node.tag).callAsync(node, function (err, result) {
+      this.hooks.traverse.for(typeof node === 'string' ? 'text' : node.tag).callAsync(node, (err, result) => {
         if (err) {
           return cb(err)
         }
@@ -24,14 +24,14 @@ module.exports = class HTMLParser {
           cb(null, result)
           return
         }
-        this.traverse(result.children, function (err, children) {
+        this.traverse(result.children, (err, children) => {
           if (err) {
             return cb(err)
           }
           result.children = children
           return cb(null, result)
         })
-      }.bind(this));
+      });
     }, () => {
       this.hooks.traversed.callAsync(tree, (err, result) => {
         if (err) {
