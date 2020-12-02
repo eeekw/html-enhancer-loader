@@ -1,86 +1,128 @@
 const path = require('path')
-const fs = require('fs')
 
 module.exports = class ResponsiveImage {
   apply(parser) {
     const { loaderContext } = parser
-    // parser.hooks.traverse.for('img').tapPromise('ResponsiveImage', (node) => {
-    //   return new Promise((resolve, reject) => {
-    //     const { attrs } = node
-    //     if (!/^\./.test(attrs.src)) {
-    //       return resolve(node)
-    //     }
-    //     loaderContext.resolve(loaderContext.context, attrs.src, () => {
+    const { fs } = loaderContext
+    const { getDir, readDir } = createFs(fs)
+    parser.hooks.traverse.for('img').tapPromise('ResponsiveImage', (node) => {
 
-    //     })
-    //   })
-    // })
-    parser.hooks.traverse.for('img').tap('ResponsiveImage', (node) => {
-      const { attrs } = node
-      if (/^\./.test(attrs.src)) {
+      return new Promise((resolve, reject) => {
+        const { attrs } = node
+        if (!/^\./.test(attrs.src)) {
+          return resolve(node)
+        }
         const source = path.resolve(loaderContext.context, attrs.src)
-        const name = path.parse(source).name
-        let dir
-        let srcset = [[], []]
-        let sizes = []
-        try {
-          const data = fs.statSync(source)
-          if (data.isDirectory()) {
-            dir = source
-          } else {
-            dir = path.dirname(source)
-          }
-          const files = fs.readdirSync(dir)
+        const { name } = path.parse(source)
+        const matchFile = this._createMatchFile(name)
+        const parseMark = this._createParseMark()
+
+        getDir(source).then(dir => {
+          return readDir(dir)
+        }).then(files => {
+          let marks = []
+          const marksMap = new Map()
+          const srcset = []
+          const sizes = []
           for (const file of files) {
-            const regExp = new RegExp('^' + name + '(.*)\\..+$')
-            const match = file.match(regExp)
+            const match = matchFile(file)
             if (!match) {
               continue
             }
-            let src = [path.relative(loaderContext.context, path.resolve(dir, file))]
             if (!match[1]) {
-              // loaderContext.resolve(dir, src, (err, result) => {
-              //   console.log(err, result)
-              // })
-              srcset[0].push(src.join(' '))
-              srcset[1].push(src.join(' '))
-              continue
-            }
-            if (match[1].charAt(0) !== '@') {
+              marksMap.set('default', file)
               continue
             }
             let unparse = match[1].slice(1)
-            const marks = parseMark(unparse)
-            if (!marks[1]) {
-              if (marks[0]) {
-                src.push(marks[0])
-                srcset[0].push(src.join(' '))
-              }
-            } else {
-              sizes.push(size(marks[4], marks[1], marks[2]))
-              srcset[1].push(src.join(' '))
+            const mark = parseMark(unparse)
+            if (!mark) {
+              continue
             }
+            marks[mark[1]] = mark
+            marksMap.set(mark, file)
           }
-          attrs.srcset = srcset[1] ? srcset[1].join(', ') : srcset[0].join(', ')
-          attrs.size = sizes.join(', ')
-          
-        } catch (error) {
-          console.error('responsive image plugin: src error')
-        }
-      }
-      return node
+          marks = marks.filter(v => !!v)
+          if (!marks.length) {
+            return resolve(node)
+          }
+          const isMQ = marks.findIndex(v => v[0] === 1) > -1
+          const last = marks[marks.length - 1]
+          for (const mark of marks.slice(0, -1)) {
+            const [, o, px, w, vp, f] = mark
+            if (isMQ && mark[0] === 1) {
+              sizes.push(size(f, vp, w))
+            }
+            srcset.push(`${marksMap.get(mark)} ${px}`)
+          }
+          if (marksMap.has('default')) {
+            srcset.push(marksMap.get('default'))
+          }
+          sizes.push(last[3])
+          attrs.srcset = srcset.join(', ')
+          attrs.sizes = sizes.join(', ')
+          resolve(node)
+        }).catch(err => {
+          resolve(node)
+        })
+      })
     })
+  }
+
+  _createMatchFile(name) {
+    const regExp = new RegExp('^' + name + '(@.*)?\\.(png|svg|jpg|jpeg|gif)$')
+    return (file) => {
+      return file.match(regExp)
+    }
+  }
+
+  _createParseMark() {
+    const regExp = /^(\d)_((\d+?x)|(\d+?w)(\d+?(px|em|vw))(\d+?px)(min|max))$/
+    return (mark) => {
+      const match = (regExp.exec(mark) || []).slice()
+      if (match.length === 0) {
+        return
+      }
+      let [o, , x, px, w, , vp, f] = match.slice(1)
+      if (px) {
+        return [
+          1, o, px, w, vp, f
+        ]
+      }
+      return [0, o, x]
+    }
   }
 }
 
-
-
-function parseMark(mark) {
-  const match = (/^(\d+?x)|(\d+?px)(\d+?(px|em|vw))(min|max)$/.exec(mark) || []).slice()
-  if (!match.length === 0) {
-    return
+function createFs(fs) {
+  const getDir = (resourcePath) => {
+    return new Promise((resolve, reject) => {
+      fs.stat(resourcePath, (err, stats) => {
+        if (err) {
+          return reject(err)
+        }
+        if (stats.isFile()) {
+          return resolve(path.dirname(resourcePath))
+        }
+        if (stats.isDirectory()) {
+          return resolve(resourcePath)
+        }
+      })
+    })
   }
-  return match.slice(1)
+
+  const readDir = (dir) => {
+    return new Promise((resolve, reject) => {
+      fs.readdir(dir, (err, files) => {
+        if (err) {
+          return reject(err)
+        }
+        return resolve(files)
+      })
+    })
+  }
+  return {
+    getDir, readDir
+  }
 }
 
 function mediaCondition(feature, vp) {
