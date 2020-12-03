@@ -5,6 +5,7 @@ module.exports = class ResponsiveImage {
     const { loaderContext } = parser
     const { fs } = loaderContext
     const { getDir, readDir } = createFs(fs)
+    const relative = createRelative(loaderContext)
     parser.hooks.traverse.for('img').tapPromise('ResponsiveImage', (node) => {
 
       return new Promise((resolve, reject) => {
@@ -18,8 +19,8 @@ module.exports = class ResponsiveImage {
         const parseMark = this._createParseMark()
 
         getDir(source).then(dir => {
-          return readDir(dir)
-        }).then(files => {
+          return readDir(dir).then((files) => Promise.resolve([files, dir]))
+        }).then(([files, dir]) => {
           let marks = []
           const marksMap = new Map()
           const srcset = []
@@ -30,7 +31,7 @@ module.exports = class ResponsiveImage {
               continue
             }
             if (!match[1]) {
-              marksMap.set('default', file)
+              marksMap.set('default', relative(dir, file))
               continue
             }
             let unparse = match[1].slice(1)
@@ -39,7 +40,7 @@ module.exports = class ResponsiveImage {
               continue
             }
             marks[mark[1]] = mark
-            marksMap.set(mark, file)
+            marksMap.set(mark, relative(dir, file))
           }
           marks = marks.filter(v => !!v)
           if (!marks.length) {
@@ -54,10 +55,12 @@ module.exports = class ResponsiveImage {
             }
             srcset.push(`${marksMap.get(mark)} ${px}`)
           }
+          srcset.push(`${marksMap.get(last)} ${last[2]}`)
+          sizes.push(last[3])
           if (marksMap.has('default')) {
             srcset.push(marksMap.get('default'))
           }
-          sizes.push(last[3])
+
           attrs.srcset = srcset.join(', ')
           attrs.sizes = sizes.join(', ')
           resolve(node)
@@ -90,6 +93,16 @@ module.exports = class ResponsiveImage {
       }
       return [0, o, x]
     }
+  }
+}
+
+function createRelative(loaderContext) {
+  return (dir, file) => {
+    let rPath = path.relative(loaderContext.context, path.resolve(dir, file))
+    if (!/^\.\.?[/\\]/.test(rPath)) {
+      rPath = './' + rPath
+    }
+    return rPath.replace(/\\/g, '/')
   }
 }
 
