@@ -1,14 +1,14 @@
 {
-  "name": "html-parser",
+  "name": "html-enhancer-loader",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Html enhancer loader for webpack",
+  "main": "lib/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "cd example && webpack serve",
     "build": "cd example && webpack"
   },
-  "author": "",
+  "author": "Keen V",
   "license": "ISC",
   "devDependencies": {
     "clean-webpack-plugin": "^3.0.0",
